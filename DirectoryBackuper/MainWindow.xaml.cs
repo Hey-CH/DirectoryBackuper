@@ -234,7 +234,7 @@ namespace DirectoryBackuper {
             get { return _Status; }
             set {
                 dispatcher.Invoke(() => {
-                    Log += "[" + DateTime.Now.ToString("yyyy/MM/dd") + "]\t" + value + "\r\n";
+                    Log += "[" + DateTime.Now.ToString("yyyy/MM/dd　HH:mm:ss") + "]\t" + value + "\r\n";
                     _Status = value;
                     OnPropertyChanged(nameof(Status));
                 });
@@ -307,9 +307,10 @@ namespace DirectoryBackuper {
         public string ParentDirectory { get; private set; }
         public string Path { get; set; }
         public string RelativePath { get; private set; }
-        //ファイルが同じかどうかを判定するための最初の512バイト
-        byte[] _InitBytes = new byte[512];
+        //ファイルが同じかどうかを判定するための最初の512→64バイトに変更
+        byte[] _InitBytes = new byte[64];
         public byte[] InitBytes { get { return _InitBytes; } }
+        public long Length { get; private set; }//長さも見ないとダメだよね。
 
         public FileInformation(string parentDir, string path) {
             ParentDirectory = parentDir;
@@ -317,8 +318,17 @@ namespace DirectoryBackuper {
             RelativePath = System.IO.Path.GetRelativePath(ParentDirectory, Path);
             try {
                 using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read)) {
-                    if (fs.Length < 30) _InitBytes = new byte[fs.Length];
-                    fs.Read(_InitBytes);
+                    Length = fs.Length;
+                    if (fs.Length < _InitBytes.Length) _InitBytes = new byte[fs.Length];
+                    //先頭の64bytesを見るだけじゃ追加された場合なんかは確実にだめだし、ハッシュコード取得にも時間がかかるっぽいから
+                    //独自の方法でファイルから64バイト取得する（最初512バイトでやってたけどものすごく遅かった）
+                    //fs.Read(_InitBytes);
+                    long step = Length / (long)_InitBytes.Length;
+                    if (step < 1) step = 1;
+                    for (long i = 0; i < _InitBytes.Length; i++) {
+                        _InitBytes[i] = (byte)fs.ReadByte();
+                        fs.Seek(step - 1, SeekOrigin.Current);
+                    }
                 }
             } catch {
                 //無い場合は無いで良い（権限でエラーになった場合は知らん）
@@ -336,7 +346,7 @@ namespace DirectoryBackuper {
     }
     public class FileInformationComparer : IEqualityComparer<FileInformation> {
         public bool Equals(FileInformation x, FileInformation y) {
-            return x.RelativePath == y.RelativePath && BytesEquals(x.InitBytes, y.InitBytes);
+            return x.RelativePath == y.RelativePath && x.Length == y.Length && BytesEquals(x.InitBytes, y.InitBytes);
         }
 
         public int GetHashCode([DisallowNull] FileInformation obj) {
