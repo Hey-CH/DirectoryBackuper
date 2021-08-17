@@ -39,9 +39,9 @@ namespace DirectoryBackuper {
                 vm.Executing = true;
                 var opes = new List<FileOperation>();//すべてのファイル操作の入れ物
 
-                for (int i = 0; i < vm.DirPairs.Count; i++) {
-                    var src = vm.DirPairs[i].Source;
-                    var dest = vm.DirPairs[i].Destination;
+                foreach (var pair in vm.DirPairs.Where(p=>p.Execute)) {
+                    var src = pair.Source;
+                    var dest = pair.Destination;
 
                     //フォルダの存在チェック（DestinationはフォルダであればOK）
                     if (!Directory.Exists(src)) {
@@ -276,6 +276,7 @@ namespace DirectoryBackuper {
         }
     }
     public class DirPair {
+        public bool Execute { get; set; }
         public string Source { get; set; }
         public string Destination { get; set; }
     }
